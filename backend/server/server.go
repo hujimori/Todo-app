@@ -4,59 +4,78 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/jinzhu/gorm"
+
+	"github.com/hujimori/Todo-app/backend/db"
+	"github.com/hujimori/Todo-app/backend/model"
 	"github.com/labstack/echo/middleware"
 
 	"github.com/labstack/echo"
 )
 
-type (
-	todo struct {
-		ID   int    `json:"id"`
-		Text string `json:"text"`
-	}
-)
+// var (
+// 	todos = map[int]*model.Todo{}
+// 	seq   = 1
+// )
 
-var (
-	todos = map[int]*todo{}
-	seq   = 1
-)
-
+///////////////////
 // Handlers
-
+///////////////////
+// e.POST("/todo/", createTodo)
 func createTodo(c echo.Context) error {
-	t := &todo{
-		ID: seq,
-	}
-
+	t := &model.Todo{}
 	if err := c.Bind(t); err != nil {
 		return err
 	}
 
-	todos[t.ID] = t
-	seq++
+	// INSERTを実行
+	con.Create(&t)
+
 	return c.JSON(http.StatusCreated, t)
 }
 
-func getTodo(c echo.Context) error {
+// e.GET("/todo/:id", showTodo)
+func showTodo(c echo.Context) error {
 	id, _ := strconv.Atoi(c.Param("id"))
-	return c.JSON(http.StatusOK, todos[id])
+	t := &model.Todo{ID: id}
+
+	con.First(&t)
+
+	return c.JSON(http.StatusOK, t)
 }
 
-func updateTodo(c echo.Context) error {
-	t := new(todo)
+// e.GET("/todos", showAllTodos)
+func showAllTodos(c echo.Context) error {
+	todos := []model.Todo{}
+	con.Find(&todos)
+	return c.JSON(http.StatusOK, todos)
+}
+
+// e.PUT("/todo/:id", updateTodos)
+func updateTodos(c echo.Context) error {
+	id, _ := strconv.Atoi(c.Param("id"))
+	t := &model.Todo{}
+
 	if err := c.Bind(t); err != nil {
 		return err
 	}
-	id, _ := strconv.Atoi(c.Param("id"))
-	todos[id].Text = t.Text
-	return c.JSON(http.StatusOK, todos[id])
+
+	attrMap := map[string]interface{}{"title": t.TITLE, "text": t.Text}
+	todo := model.Todo{}
+	con.Model(&todo).Where("id= ?", id).Updates(attrMap)
+	return c.NoContent(http.StatusOK)
 }
 
+// e.DELETE("/employee/:id", deleteTodo)
 func deleteTodo(c echo.Context) error {
 	id, _ := strconv.Atoi(c.Param("id"))
-	delete(todos, id)
-	return c.NoContent(http.StatusNoContent)
+	todo := model.Todo{ID: id}
+	con.First(&todo)
+	con.Delete(&todo)
+	return c.JSON(http.StatusOK, todo)
 }
+
+var con *gorm.DB
 
 func Start() {
 	e := echo.New()
@@ -65,11 +84,15 @@ func Start() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
+	con = db.GetConnection()
+	defer con.Close()
+
 	// Rouring
-	e.POST("/todos/", createTodo)
-	e.GET("/todos/:id", getTodo)
-	e.PUT("/todos/:id", updateTodo)
-	e.DELETE("/todos/:id", deleteTodo)
+	e.POST("/todo", createTodo)
+	e.GET("/todo/:id", showTodo)
+	e.GET("/todos", showAllTodos)
+	e.PUT("/todo/:id", updateTodos)
+	e.DELETE("/todo/:id", deleteTodo)
 
 	e.Logger.Fatal(e.Start(":1323"))
 }
